@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>head</name>
+  <version>0.0.1</version>
+  <description>Head control node for pan/tilt Dynamixel servos</description>
+
+  <maintainer email="franco@todo.todo">franco</maintainer>
+  <license>BSD</license>
+
+  <!-- Build tool -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Runtime dependencies -->
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+  <!-- Dynamixel SDK (if installed as ament package) -->
+  <!-- If Dynamixel SDK is not installed as ROS pkg, remove and include manually in CMakeLists -->
+  <depend>dynamixel_sdk</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

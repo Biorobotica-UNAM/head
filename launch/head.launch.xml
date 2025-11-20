@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<launch>
+
+    <!-- YAML parameter file -->
+    <arg name="config_file"
+         default="$(find-pkg-share head)/config/head_params.yaml" />
+
+    <arg name="use_sim_time" default="false" />
+
+    <!-- Head Node -->
+    <node pkg="head"
+          exec="head_node"
+          name="head_node"
+          output="screen">
+
+        <param from="$(var config_file)"/>
+        <param name="use_sim_time" value="$(var use_sim_time)"/>
+    </node>
+
+</launch>

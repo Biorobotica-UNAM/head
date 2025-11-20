@@ -1,0 +1,18 @@
+/**:
+  ros__parameters:
+    # Serial port configuration
+    port: "/dev/ttyUSB0"
+    baudrate: 1000000
+    
+    # Control parameters
+    torque_enable: true
+    max_speed: 50
+    
+    # Arm servo configuration
+    servo_head_ids: [0, 2]
+    servo_head_bits_per_radian: [651.7394, 195.3781]
+    servo_head_zeros: [2000, 900]
+    servo_head_directions: [1, 1]
+    
+    # Joint names
+    joint_names: ["pan", "tilt"]
