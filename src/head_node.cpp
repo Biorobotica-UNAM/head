@@ -89,6 +89,8 @@ private:
         this->declare_parameter<std::vector<int64_t>>("servo_head_zeros");
         this->declare_parameter<std::vector<int64_t>>("servo_head_directions");
         this->declare_parameter<std::vector<std::string>>("joint_names");
+        this->declare_parameter<std::string>("goal_topic", "/hardware/head/goal_pose");     // evita hardcodear
+
 
         port_name_ = this->get_parameter("port").as_string();
         baudrate_  = this->get_parameter("baudrate").as_int();
@@ -146,13 +148,18 @@ private:
 
     void setup_interfaces()
     {
+        std::string goal_topic = this->get_parameter("goal_topic").as_string();
+
         pub_joint_states_ = this->create_publisher<sensor_msgs::msg::JointState>(
             "/joint_states", 10);
 
         sub_goal_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
-            "/hardware/head/goal_pose", 10,
-            std::bind(&HeadNode::callback_goal, this, std::placeholders::_1));
+            goal_topic,
+            10,
+            std::bind(&HeadNode::callback_goal, this, std::placeholders::_1)
+        );
     }
+
 
     /* ------------------------------ */
     /*          CALLBACKS             */
