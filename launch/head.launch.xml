@@ -1,6 +1,9 @@
 <?xml version="1.0"?>
 <launch>
 
+  <group>
+    <push_ros_namespace namespace="head"/>
+
     <!-- YAML parameter file -->
     <arg name="config_file"
          default="$(find-pkg-share head)/config/head_params.yaml" />
@@ -16,5 +19,7 @@
         <param from="$(var config_file)"/>
         <param name="use_sim_time" value="$(var use_sim_time)"/>
     </node>
+
+  </group>
 
 </launch>
