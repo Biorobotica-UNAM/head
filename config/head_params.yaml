@@ -1,9 +1,9 @@
 /**:
   ros__parameters:
     # Serial port configuration
-    port: "/dev/justinaHead"
+    port: "/dev/ttyUSB0"
     baudrate: 1000000
-    goal_topic: "/hardware/head/goal_pose"
+    goal_topic: "goal_pose"
 
     
     # Control parameters
@@ -17,4 +17,4 @@
     servo_head_directions: [1, 1]
     
     # Joint names
-    joint_names: ["pan", "tilt"]
+    joint_names: ["head_pan", "head_tilt"]

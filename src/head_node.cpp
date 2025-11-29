@@ -89,7 +89,7 @@ private:
         this->declare_parameter<std::vector<int64_t>>("servo_head_zeros");
         this->declare_parameter<std::vector<int64_t>>("servo_head_directions");
         this->declare_parameter<std::vector<std::string>>("joint_names");
-        this->declare_parameter<std::string>("goal_topic", "/hardware/head/goal_pose");     // evita hardcodear
+        this->declare_parameter<std::string>("goal_topic", "/goal_pose");     // evita hardcodear
 
 
         port_name_ = this->get_parameter("port").as_string();
@@ -151,7 +151,7 @@ private:
         std::string goal_topic = this->get_parameter("goal_topic").as_string();
 
         pub_joint_states_ = this->create_publisher<sensor_msgs::msg::JointState>(
-            "/joint_states", 10);
+            "joint_states", 10);
 
         sub_goal_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
             goal_topic,
@@ -196,8 +196,8 @@ private:
             // ------------------------------
             //   PRINT POSITION IN BITS
             // ------------------------------
-            RCLCPP_INFO(this->get_logger(),
-                "Motor %d → Position (bits): %d", ids_[i], curr_bits_[i]);
+            //RCLCPP_INFO(this->get_logger(),
+            //    "Motor %d → Position (bits): %d", ids_[i], curr_bits_[i]);
         }
 
         // publish joint states
