@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     # Serial port configuration
-    port: "/dev/ttyUSB0"
+    port: "/dev/justinaHead"
     baudrate: 1000000
     goal_topic: "goal_pose"
 
