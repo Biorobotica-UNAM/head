@@ -1,3 +1,9 @@
+/*
+  Código de control de los dos motores de la cabeza pan y tilt (horizontal, vertical)
+  El nodo recibe un vector en bits (pan, tilt) 
+  Los rangos para cada motor fueron definidos en el software Dynamixel Wizard:
+  [1024->tope derecho,  3091->tope izquierdo] y [3100->tope superior, 4095->tope inferior]
+*/
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
@@ -170,8 +176,7 @@ private:
         if (msg->data.size() < ids_.size()) return;
 
         for (size_t i = 0; i < ids_.size(); i++) {
-            goal_bits_[i] =
-                directions_[i] * msg->data[i] * bits_per_rad_[i] + zeros_[i];
+            goal_bits_[i] = static_cast<int>(msg->data[i]);
         }
     }
 
