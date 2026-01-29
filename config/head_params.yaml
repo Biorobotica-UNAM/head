@@ -12,7 +12,7 @@
     
     # Arm servo configuration
     servo_head_ids: [0, 5]
-    servo_head_bits_per_radian: [651, 651]
+    servo_head_bits_per_radian: [651.0, 651.0]
     servo_head_zeros: [2057, 3526]
     servo_head_directions: [1, 1]
     
