@@ -1,12 +1,13 @@
 /*
   Código de control de los dos motores de la cabeza pan y tilt (horizontal, vertical)
-  El nodo recibe un vector en bits (pan, tilt) 
+  El nodo recibe un vector en radianes (pan, tilt) 
   Los rangos para cada motor fueron definidos en el software Dynamixel Wizard:
   [1024->tope derecho,  3091->tope izquierdo] y [3100->tope superior, 4095->tope inferior]
 */
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+
 
 #include "dynamixel_sdk/dynamixel_sdk.h"
 
@@ -175,22 +176,11 @@ private:
     {
         if (msg->data.size() < ids_.size()) return;
 
-        // --------- Constantes PAN ---------
-        const double PAN_ZERO_BITS = 2057.0;
-        const double PAN_DEG_PER_BIT = -180.0 / (3091.0 - 1024.0); // ≈ -0.087
-        const double PAN_BIT_PER_DEG = 1.0 / PAN_DEG_PER_BIT;     // ≈ -11.48
+        for (size_t i = 0; i < ids_.size(); i++) {
+            double q_rad = msg->data[i];
 
-        // --------- Constantes TILT ---------
-        const double TILT_ZERO_BITS = 3526.0;
-        const double TILT_DEG_PER_BIT = 61.0 / (3794.0 - 3100.0); // ≈ 0.0879
-        const double TILT_BIT_PER_DEG = 1.0 / TILT_DEG_PER_BIT;  // ≈ 11.37
-
-        double pan_deg  = msg->data[0];
-        double tilt_deg = msg->data[1];
-
-        // Conversión grados → bits
-        goal_bits_[0] = static_cast<int>(PAN_ZERO_BITS + pan_deg * PAN_BIT_PER_DEG);
-        goal_bits_[1] = static_cast<int>(TILT_ZERO_BITS + tilt_deg * TILT_BIT_PER_DEG);
+            goal_bits_[i] = static_cast<int>(zeros_[i] + directions_[i] * bits_per_rad_[i] * q_rad);
+        }
     }
 
     /* ------------------------------ */
