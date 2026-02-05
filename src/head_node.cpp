@@ -175,9 +175,22 @@ private:
     {
         if (msg->data.size() < ids_.size()) return;
 
-        for (size_t i = 0; i < ids_.size(); i++) {
-            goal_bits_[i] = static_cast<int>(msg->data[i]);
-        }
+        // --------- Constantes PAN ---------
+        const double PAN_ZERO_BITS = 2057.0;
+        const double PAN_DEG_PER_BIT = -180.0 / (3091.0 - 1024.0); // ≈ -0.087
+        const double PAN_BIT_PER_DEG = 1.0 / PAN_DEG_PER_BIT;     // ≈ -11.48
+
+        // --------- Constantes TILT ---------
+        const double TILT_ZERO_BITS = 3526.0;
+        const double TILT_DEG_PER_BIT = 61.0 / (3794.0 - 3100.0); // ≈ 0.0879
+        const double TILT_BIT_PER_DEG = 1.0 / TILT_DEG_PER_BIT;  // ≈ 11.37
+
+        double pan_deg  = msg->data[0];
+        double tilt_deg = msg->data[1];
+
+        // Conversión grados → bits
+        goal_bits_[0] = static_cast<int>(PAN_ZERO_BITS + pan_deg * PAN_BIT_PER_DEG);
+        goal_bits_[1] = static_cast<int>(TILT_ZERO_BITS + tilt_deg * TILT_BIT_PER_DEG);
     }
 
     /* ------------------------------ */
