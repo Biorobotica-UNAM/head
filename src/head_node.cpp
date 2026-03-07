@@ -1,13 +1,6 @@
-/*
-  Código de control de los dos motores de la cabeza pan y tilt (horizontal, vertical)
-  El nodo recibe un vector en radianes (pan, tilt) 
-  Los rangos para cada motor fueron definidos en el software Dynamixel Wizard:
-  [1024->tope derecho,  3091->tope izquierdo] y [3100->tope superior, 4095->tope inferior]
-*/
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
-
 
 #include "dynamixel_sdk/dynamixel_sdk.h"
 
@@ -132,13 +125,13 @@ private:
         if (!port_->openPort()) return false;
         if (!port_->setBaudRate(baudrate_)) return false;
 
-        // enable torque
+        // Enable torque
         for (int id : ids_) {
             packet_->write1ByteTxRx(port_, id, MX_TORQUE_ENABLE, 1);
             packet_->write2ByteTxRx(port_, id, MX_MOVING_SPEED, max_speed_);
         }
 
-        // read initial positions
+        // Read initial positions
         for (size_t i = 0; i < ids_.size(); i++) {
             uint16_t pos;
             packet_->read2ByteTxRx(port_, ids_[i], MX_PRESENT_POSITION, &pos);
@@ -189,13 +182,13 @@ private:
 
     void update_loop()
     {
-        // write goals
+        // Write goals
         for (size_t i = 0; i < ids_.size(); i++) {
             packet_->write2ByteTxRx(
                 port_, ids_[i], MX_GOAL_POSITION, goal_bits_[i]);
         }
 
-        // read current positions
+        // Read current positions
         for (size_t i = 0; i < ids_.size(); i++) {
             uint16_t pos;
             packet_->read2ByteTxRx(port_, ids_[i], MX_PRESENT_POSITION, &pos);
@@ -204,11 +197,11 @@ private:
             // ------------------------------
             //   PRINT POSITION IN BITS
             // ------------------------------
-            //RCLCPP_INFO(this->get_logger(),
-            //    "Motor %d → Position (bits): %d", ids_[i], curr_bits_[i]);
+
+            //RCLCPP_INFO(this->get_logger(), "Motor %d → Position (bits): %d", ids_[i], curr_bits_[i]);
         }
 
-        // publish joint states
+        // Publish joint states
         sensor_msgs::msg::JointState js;
         js.header.stamp = this->now();
         js.name = this->get_parameter("joint_names").as_string_array();
