@@ -1,19 +1,19 @@
 /**:
   ros__parameters:
     # Serial port configuration
-    port: "/dev/justinaHead"
+    port: "/dev/head"
     baudrate: 1000000
     goal_topic: "goal_pose"
 
     
     # Control parameters
     torque_enable: true
-    max_speed: 50
+    max_speed: 100
     
     # Arm servo configuration
-    servo_head_ids: [0, 5]
+    servo_head_ids: [0, 1]
     servo_head_bits_per_radian: [651.0, 651.0]
-    servo_head_zeros: [2057, 3526]
+    servo_head_zeros: [1950, 2709]
     servo_head_directions: [1, 1]
     
     # Joint names
