@@ -14,7 +14,7 @@
     servo_head_ids: [0, 1]
     servo_head_bits_per_radian: [651.0, 651.0]
     servo_head_zeros: [1950, 2709]
-    servo_head_directions: [1, 1]
+    servo_head_directions: [1, -1]
     
     # Joint names
     joint_names: ["head_pan", "head_tilt"]
