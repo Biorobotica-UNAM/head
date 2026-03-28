@@ -1,0 +1,22 @@
+/**:
+  ros__parameters:
+    simulation: true
+    port: "/dev/head"
+    baudrate: 1000000
+    torque_enable: false
+    max_speed: 20
+
+    joint_states_topic: "joint_states"
+    current_pose_topic: "current_pose"
+    head_controller_service: "move_head"
+
+    servo_ids: [0, 1]
+    servo_bits_per_radian: [651.7395, 651.7395]
+    servo_zeros: [1940, 2670]
+
+    servo_min_limits: [1640, 2380] 
+    servo_max_limits: [2240, 3038]
+    servo_directions: [1, 1]
+
+    joint_names:
+      ["head_pan_joint", "head_tilt_joint"]

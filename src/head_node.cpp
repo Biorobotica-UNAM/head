@@ -1,15 +1,16 @@
-#include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/float64_multi_array.hpp"
-#include "std_msgs/msg/int32.hpp"
-#include "sensor_msgs/msg/joint_state.hpp"
+#include <algorithm>
+#include <memory>
+#include <chrono>
 
 #include "dynamixel_sdk/dynamixel_sdk.h"
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/float64_multi_array.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
+#include "head_interfaces/srv/move_head.hpp"
 
-#include <chrono>
-#include <vector>
-#include <string>
-#include <functional>
-#include <cstdint>
+using std::placeholders::_1;
+using std::placeholders::_2;
+using namespace std::chrono_literals;
 
 #define MX_PRESENT_POSITION 36
 #define MX_GOAL_POSITION    30
@@ -17,354 +18,307 @@
 #define MX_TORQUE_ENABLE    24
 #define MX_TORQUE_LIMIT     34
 
+#define TORQUE_LIMIT_BITS 1000
+
 class HeadNode : public rclcpp::Node {
 public:
+
     HeadNode() : Node("head_node")
     {
         RCLCPP_INFO(this->get_logger(), "Initializing head_node...");
 
-        port_ = nullptr;
-        packet_ = nullptr;
-        port_ready_ = false;
-
-        if (!load_parameters()) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to load parameters");
+        if(!declare_and_get_parameters() || !initialize_dynamixel())
+        {
+            RCLCPP_ERROR(this->get_logger(), "Initialization failed");
+            rclcpp::shutdown();
             return;
         }
 
         setup_interfaces();
-
-        // Al iniciar, el objetivo es zero-zero
-        for (size_t i = 0; i < ids_.size(); i++) {
-            goal_bits_[i] = zeros_[i];
-        }
-
-        last_retry_time_ = std::chrono::steady_clock::now();
-
-        // Intento inicial, sin matar el nodo si falla
-        init_dxl();
+        initialize_messages();
 
         timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(20),
-            std::bind(&HeadNode::update_loop, this));
+            20ms, std::bind(&HeadNode::timer_callback, this));
 
-        RCLCPP_INFO(this->get_logger(), "head_node started successfully");
+        RCLCPP_INFO(this->get_logger(), "Head node ready");
     }
 
     ~HeadNode()
     {
-        if (port_ != nullptr) {
-            port_->closePort();
-        }
+        if(port_handler_ != nullptr)
+            port_handler_->closePort();
     }
 
 private:
 
-    /* ------------------------------ */
-    /*         PARAMETERS             */
-    /* ------------------------------ */
+    // ROS
+    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_joint_state_;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_current_pose_;
+    rclcpp::Service<head_interfaces::srv::MoveHead>::SharedPtr srv_move_;
 
+    // Dynamixel
+    dynamixel::PortHandler* port_handler_ = nullptr;
+    dynamixel::PacketHandler* packet_handler_ = nullptr;
+
+    // Parameters
     std::string port_name_;
     int baudrate_;
+    bool torque_enable_;
     int max_speed_;
+	std::string joint_states_topic_;
+	std::string current_pose_topic_;
+	std::string service_name_;
+    bool simulation_;
 
-    std::vector<int> ids_;
-    std::vector<int> zeros_;
-    std::vector<int> directions_;
-    std::vector<double> bits_per_rad_;
+    std::vector<int> servo_ids_;
+    std::vector<double> servo_bits_per_radian_;
+    std::vector<int> servo_zeros_;
+    std::vector<int> servo_directions_;
+    std::vector<int> servo_min_limits_;
+    std::vector<int> servo_max_limits_;
+
+    size_t num_servos_;
     std::vector<std::string> joint_names_;
 
-    /* ------------------------------ */
-    /*     DYNAMIXEL HANDLES          */
-    /* ------------------------------ */
+    // State
+    std::vector<int> current_position_bits_;
+    std::vector<int> goal_pose_bits_;
 
-    dynamixel::PortHandler *port_;
-    dynamixel::PacketHandler *packet_;
-    bool port_ready_;
+    // Messages
+    sensor_msgs::msg::JointState joint_states_;
+    std_msgs::msg::Float64MultiArray msg_current_pose_;
 
-    /* ------------------------------ */
-    /*     ROS INTERFACES             */
-    /* ------------------------------ */
+    uint8_t dxl_error = 0;
 
-    rclcpp::TimerBase::SharedPtr timer_;
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr sub_goal_;
-    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_joint_states_;
-    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_status_;
-
-    /* ------------------------------ */
-    /*            STATE               */
-    /* ------------------------------ */
-
-    std::vector<int> curr_bits_;
-    std::vector<int> goal_bits_;
-    std::vector<bool> motor_connected_;
-
-    std::chrono::steady_clock::time_point last_retry_time_;
-    std::chrono::milliseconds retry_period_{1000};
-
-    /* ------------------------------ */
-    /*     LOAD PARAMETERS            */
-    /* ------------------------------ */
-
-    bool load_parameters()
+    // =========================
+    // PARAMETERS
+    // =========================
+    bool declare_and_get_parameters()
     {
+        this->declare_parameter<bool>("simulation", false);
+
         this->declare_parameter<std::string>("port", "");
         this->declare_parameter<int>("baudrate", 1000000);
-        this->declare_parameter<int>("max_speed", 50);
-        this->declare_parameter<std::vector<int64_t>>("servo_head_ids");
-        this->declare_parameter<std::vector<double>>("servo_head_bits_per_radian");
-        this->declare_parameter<std::vector<int64_t>>("servo_head_zeros");
-        this->declare_parameter<std::vector<int64_t>>("servo_head_directions");
-        this->declare_parameter<std::vector<std::string>>("joint_names");
-        this->declare_parameter<std::string>("goal_topic", "/goal_pose");
+        this->declare_parameter<bool>("torque_enable", true);
+        this->declare_parameter<int>("max_speed", 20);
+        
+		this->declare_parameter<std::string>("joint_states_topic", "joint_states");
+		this->declare_parameter<std::string>("current_pose_topic", "current_pose");
+		this->declare_parameter<std::string>("head_controller_service", "move_head");
+
+        this->declare_parameter<std::vector<int64_t>>("servo_ids", std::vector<int64_t>{});
+        this->declare_parameter<std::vector<double>>("servo_bits_per_radian", std::vector<double>{});
+        this->declare_parameter<std::vector<int64_t>>("servo_zeros", std::vector<int64_t>{});
+        this->declare_parameter<std::vector<int64_t>>("servo_directions", std::vector<int64_t>{});
+        this->declare_parameter<std::vector<int64_t>>("servo_min_limits", std::vector<int64_t>{});
+        this->declare_parameter<std::vector<int64_t>>("servo_max_limits", std::vector<int64_t>{});
+        this->declare_parameter<std::vector<std::string>>("joint_names", std::vector<std::string>{});
+
+        simulation_ = this->get_parameter("simulation").as_bool();
 
         port_name_ = this->get_parameter("port").as_string();
-        baudrate_  = this->get_parameter("baudrate").as_int();
+        baudrate_ = this->get_parameter("baudrate").as_int();
+        torque_enable_ = this->get_parameter("torque_enable").as_bool();
         max_speed_ = this->get_parameter("max_speed").as_int();
 
-        auto ids64 = this->get_parameter("servo_head_ids").as_integer_array();
-        auto zeros64 = this->get_parameter("servo_head_zeros").as_integer_array();
-        auto dirs64 = this->get_parameter("servo_head_directions").as_integer_array();
-        bits_per_rad_ = this->get_parameter("servo_head_bits_per_radian").as_double_array();
-        joint_names_ = this->get_parameter("joint_names").as_string_array();
+        joint_states_topic_ = this->get_parameter("joint_states_topic").as_string();
+		current_pose_topic_ = this->get_parameter("current_pose_topic").as_string();
+		service_name_ = this->get_parameter("head_controller_service").as_string();
 
-        for (auto v : ids64) ids_.push_back((int)v);
-        for (auto v : zeros64) zeros_.push_back((int)v);
-        for (auto v : dirs64) directions_.push_back((int)v);
+        auto ids = this->get_parameter("servo_ids").as_integer_array();
+        auto zeros = this->get_parameter("servo_zeros").as_integer_array();
+        auto dirs = this->get_parameter("servo_directions").as_integer_array();
+        auto min_l = this->get_parameter("servo_min_limits").as_integer_array();
+        auto max_l = this->get_parameter("servo_max_limits").as_integer_array();
 
-        if (ids_.empty()) return false;
+		joint_names_ = this->get_parameter("joint_names").as_string_array();
 
-        if (ids_.size() != zeros_.size() ||
-            ids_.size() != directions_.size() ||
-            ids_.size() != bits_per_rad_.size() ||
-            ids_.size() != joint_names_.size()) {
-            RCLCPP_ERROR(this->get_logger(),
-                "Parameter size mismatch in head configuration");
+        servo_bits_per_radian_ = this->get_parameter("servo_bits_per_radian").as_double_array();
+
+        num_servos_ = ids.size();
+
+        if(num_servos_ == 0)
+        {
+            RCLCPP_ERROR(this->get_logger(), "No servos configured");
             return false;
         }
 
-        curr_bits_.resize(ids_.size(), 0);
-        goal_bits_.resize(ids_.size(), 0);
-        motor_connected_.resize(ids_.size(), false);
+        for(auto v : ids) servo_ids_.push_back((int)v);
+        for(auto v : zeros) servo_zeros_.push_back((int)v);
+        for(auto v : dirs) servo_directions_.push_back((int)v);
+        for(auto v : min_l) servo_min_limits_.push_back((int)v);
+        for(auto v : max_l) servo_max_limits_.push_back((int)v);
 
         return true;
     }
 
-    /* ------------------------------ */
-    /*   DXL INITIALIZATION           */
-    /* ------------------------------ */
-
-    bool init_dxl()
+    // =========================
+    // INIT
+    // =========================
+    bool initialize_dynamixel()
     {
-        if (port_ == nullptr) {
-            port_ = dynamixel::PortHandler::getPortHandler(port_name_.c_str());
+        if(simulation_)
+        {
+            RCLCPP_WARN(this->get_logger(), "Running in SIMULATION mode");
+
+            current_position_bits_.resize(num_servos_, 2048);
+            goal_pose_bits_.resize(num_servos_, 2048);
+
+            return true;
         }
 
-        if (packet_ == nullptr) {
-            packet_ = dynamixel::PacketHandler::getPacketHandler(1.0);
-        }
-
-        if (!port_->openPort()) {
-            port_ready_ = false;
-            RCLCPP_WARN_THROTTLE(
-                this->get_logger(), *this->get_clock(), 2000,
-                "Failed to open port %s", port_name_.c_str());
+        if(port_name_.empty())
+        {
+            RCLCPP_ERROR(this->get_logger(), "Port not specified");
             return false;
         }
 
-        if (!port_->setBaudRate(baudrate_)) {
-            port_ready_ = false;
-            RCLCPP_WARN_THROTTLE(
-                this->get_logger(), *this->get_clock(), 2000,
-                "Failed to set baudrate %d", baudrate_);
+        port_handler_ = dynamixel::PortHandler::getPortHandler(port_name_.c_str());
+        packet_handler_ = dynamixel::PacketHandler::getPacketHandler(1.0);
+
+        if (!port_handler_->openPort())
             return false;
-        }
 
-        port_ready_ = true;
+        if (!port_handler_->setBaudRate(baudrate_))
+            return false;
 
-        for (size_t i = 0; i < ids_.size(); i++) {
-            try_initialize_motor(i);
+        current_position_bits_.resize(num_servos_);
+        read_current_positions();
+        goal_pose_bits_ = current_position_bits_;
+
+        for(size_t i = 0; i < num_servos_; i++)
+        {
+            packet_handler_->write2ByteTxOnly(
+                port_handler_, servo_ids_[i], MX_MOVING_SPEED, max_speed_);
+
+            packet_handler_->write1ByteTxRx(
+                port_handler_, servo_ids_[i], MX_TORQUE_ENABLE, torque_enable_, &dxl_error);
+
+            packet_handler_->write2ByteTxRx(
+                port_handler_, servo_ids_[i], MX_TORQUE_LIMIT, TORQUE_LIMIT_BITS, &dxl_error);
         }
 
         return true;
     }
 
-    bool try_initialize_motor(size_t i)
-    {
-        if (!port_ready_) return false;
-
-        const int id = ids_[i];
-
-        uint16_t pos = 0;
-        int comm_result = packet_->read2ByteTxRx(port_, id, MX_PRESENT_POSITION, &pos);
-
-        if (comm_result != COMM_SUCCESS) {
-            motor_connected_[i] = false;
-            return false;
-        }
-
-        curr_bits_[i] = pos;
-
-        // Igual que tu nodo original
-        packet_->write1ByteTxRx(port_, id, MX_TORQUE_ENABLE, 1);
-        packet_->write2ByteTxRx(port_, id, MX_MOVING_SPEED, max_speed_);
-        packet_->write2ByteTxRx(port_, id, MX_GOAL_POSITION, goal_bits_[i]);
-
-        bool was_connected = motor_connected_[i];
-        motor_connected_[i] = true;
-
-        if (!was_connected) {
-            RCLCPP_INFO(
-                this->get_logger(),
-                "Motor %d detected. Torque enabled. Moving to zero: %d",
-                id, goal_bits_[i]);
-        }
-
-        return true;
-    }
-
-    /* ------------------------------ */
-    /*         ROS INTERFACES         */
-    /* ------------------------------ */
-
+    // =========================
+    // ROS INTERFACES
+    // =========================
     void setup_interfaces()
     {
-        std::string goal_topic = this->get_parameter("goal_topic").as_string();
-
-        pub_joint_states_ = this->create_publisher<sensor_msgs::msg::JointState>(
-            "joint_states", 10);
-
-        pub_status_ = this->create_publisher<std_msgs::msg::Int32>(
-            "status", 10);
-
-        sub_goal_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
-            goal_topic,
-            10,
-            std::bind(&HeadNode::callback_goal, this, std::placeholders::_1)
-        );
+        pub_joint_state_ = this->create_publisher<sensor_msgs::msg::JointState>(joint_states_topic_, 10);
+    	pub_current_pose_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(current_pose_topic_, 10);
+    	srv_move_ = this->create_service<head_interfaces::srv::MoveHead>(service_name_, std::bind(&HeadNode::move_service, this, _1, _2));
     }
 
-    /* ------------------------------ */
-    /*          CALLBACKS             */
-    /* ------------------------------ */
-
-    void callback_goal(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
+    void initialize_messages()
     {
-        if (msg->data.size() < ids_.size()) return;
+        msg_current_pose_.data.resize(num_servos_);
+        joint_states_.name = joint_names_;
+    }
 
-        for (size_t i = 0; i < ids_.size(); i++) {
-            double q_rad = msg->data[i];
-            goal_bits_[i] = static_cast<int>(
-                zeros_[i] + directions_[i] * bits_per_rad_[i] * q_rad
-            );
+    // =========================
+    // SERVICE
+    // =========================
+    void move_service(
+        const std::shared_ptr<head_interfaces::srv::MoveHead::Request> request,
+        std::shared_ptr<head_interfaces::srv::MoveHead::Response> response)
+    {
+        if(request->positions.size() != num_servos_)
+        {
+            response->success = false;
+            response->message = "Invalid joint size";
+            return;
         }
+
+        for(size_t i = 0; i < num_servos_; i++)
+        {
+            int raw = servo_directions_[i] * request->positions[i] *
+                      servo_bits_per_radian_[i] + servo_zeros_[i];
+
+            goal_pose_bits_[i] = std::clamp(raw,
+                                           servo_min_limits_[i],
+                                           servo_max_limits_[i]);
+        }
+
+        write_goal_positions();
+
+        response->success = true;
+        response->message = "Command sent";
     }
 
-    /* ------------------------------ */
-    /*            STATUS              */
-    /* ------------------------------ */
-
-    bool all_motors_connected() const
+    // =========================
+    // TIMER
+    // =========================
+    void timer_callback()
     {
-        for (bool ok : motor_connected_) {
-            if (!ok) return false;
+        read_current_positions();
+
+        joint_states_.header.stamp = this->now();
+        joint_states_.position = bits_to_radians(current_position_bits_);
+
+        pub_joint_state_->publish(joint_states_);
+
+        for(size_t i = 0; i < num_servos_; i++)
+            msg_current_pose_.data[i] = joint_states_.position[i];
+
+        pub_current_pose_->publish(msg_current_pose_);
+    }
+
+    // =========================
+    // HARDWARE
+    // =========================
+    bool read_current_positions()
+    {
+        if(simulation_)
+            return true;
+
+        for(size_t i = 0; i < num_servos_; i++)
+        {
+            packet_handler_->read2ByteTxRx(
+                port_handler_,
+                servo_ids_[i],
+                MX_PRESENT_POSITION,
+                reinterpret_cast<uint16_t*>(&current_position_bits_[i]));
         }
         return true;
     }
 
-    void publish_status_if_needed()
+    bool write_goal_positions()
     {
-        if (!port_ready_ || !all_motors_connected()) {
-            std_msgs::msg::Int32 msg;
-            msg.data = 1;
-            pub_status_->publish(msg);
+        if(simulation_)
+        {
+            current_position_bits_ = goal_pose_bits_;
+            return true;
         }
+
+        for(size_t i = 0; i < num_servos_; i++)
+        {
+            packet_handler_->write2ByteTxRx(
+                port_handler_,
+                servo_ids_[i],
+                MX_GOAL_POSITION,
+                goal_pose_bits_[i],
+                &dxl_error);
+        }
+        return true;
     }
 
-    /* ------------------------------ */
-    /*          MAIN LOOP             */
-    /* ------------------------------ */
-
-    void update_loop()
+    std::vector<double> bits_to_radians(const std::vector<int>& bits)
     {
-        // 1) Recuperar puerto si se perdió
-        if (!port_ready_) {
-            if (!init_dxl()) {
-                publish_status_if_needed();
-                return;
-            }
+        std::vector<double> radians(bits.size());
+        for(size_t i = 0; i < bits.size(); i++)
+        {
+            radians[i] = servo_directions_[i] *
+                         (bits[i] - servo_zeros_[i]) /
+                         servo_bits_per_radian_[i];
         }
-
-        // 2) Reintentar detectar motores faltantes cada 1 segundo
-        auto now = std::chrono::steady_clock::now();
-        if ((now - last_retry_time_) >= retry_period_) {
-            for (size_t i = 0; i < ids_.size(); i++) {
-                if (!motor_connected_[i]) {
-                    try_initialize_motor(i);
-                }
-            }
-            last_retry_time_ = now;
-        }
-
-        // 3) Escribir goals solo a motores detectados
-        // NO marcar desconectado aquí por un write fallido aislado
-        for (size_t i = 0; i < ids_.size(); i++) {
-            if (!motor_connected_[i]) continue;
-
-            int comm_result = packet_->write2ByteTxRx(
-                port_, ids_[i], MX_GOAL_POSITION, goal_bits_[i]);
-
-            if (comm_result != COMM_SUCCESS) {
-                RCLCPP_DEBUG(
-                    this->get_logger(),
-                    "Write goal failed for motor %d (comm_result=%d)",
-                    ids_[i], comm_result);
-            }
-        }
-
-        // 4) Leer posiciones: AQUÍ sí decidimos si se perdió el motor
-        sensor_msgs::msg::JointState js;
-        js.header.stamp = this->now();
-        js.name = joint_names_;
-        js.position.resize(ids_.size(), 0.0);
-
-        for (size_t i = 0; i < ids_.size(); i++) {
-            if (!motor_connected_[i]) {
-                js.position[i] = 0.0;
-                continue;
-            }
-
-            uint16_t pos = 0;
-            int comm_result = packet_->read2ByteTxRx(
-                port_, ids_[i], MX_PRESENT_POSITION, &pos);
-
-            if (comm_result != COMM_SUCCESS) {
-                bool was_connected = motor_connected_[i];
-                motor_connected_[i] = false;
-                js.position[i] = 0.0;
-
-                if (was_connected) {
-                    RCLCPP_WARN(
-                        this->get_logger(),
-                        "Lost motor %d while reading position",
-                        ids_[i]);
-                }
-                continue;
-            }
-
-            curr_bits_[i] = pos;
-            js.position[i] =
-                directions_[i] * (curr_bits_[i] - zeros_[i]) / bits_per_rad_[i];
-        }
-
-        pub_joint_states_->publish(js);
-
-        // 5) Publicar status=1 si falta al menos un motor o el puerto
-        publish_status_if_needed();
+        return radians;
     }
 };
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<HeadNode>());
