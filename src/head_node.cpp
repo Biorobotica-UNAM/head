@@ -111,7 +111,6 @@ private:
     bool declare_and_get_parameters()
     {
         this->declare_parameter<bool>("simulation", false);
-
         this->declare_parameter<std::string>("port", "");
         this->declare_parameter<int>("baudrate", 1000000);
         this->declare_parameter<bool>("torque_enable", true);
@@ -130,7 +129,6 @@ private:
         this->declare_parameter<std::vector<std::string>>("joint_names", std::vector<std::string>{});
 
         simulation_ = this->get_parameter("simulation").as_bool();
-
         port_name_ = this->get_parameter("port").as_string();
         baudrate_ = this->get_parameter("baudrate").as_int();
         torque_enable_ = this->get_parameter("torque_enable").as_bool();
@@ -147,7 +145,6 @@ private:
         auto max_l = this->get_parameter("servo_max_limits").as_integer_array();
 
 		joint_names_ = this->get_parameter("joint_names").as_string_array();
-
         servo_bits_per_radian_ = this->get_parameter("servo_bits_per_radian").as_double_array();
 
         num_servos_ = ids.size();
@@ -205,7 +202,7 @@ private:
 		}
 		else
 		{
-		    RCLCPP_WARN(this->get_logger(), "Motors not available at launch. Configured when powered");
+		    RCLCPP_WARN(this->get_logger(), "Motors not available at launch. Will be configured when available");
 		}
 
 		return true;
@@ -230,7 +227,6 @@ private:
 	// =========================
     // MOVEMENT CONTROL
     // =========================
-
 	bool move_to_position(const std::vector<double>& positions, std::string& message)
 	{
 		if (positions.size() != num_servos_)
@@ -417,8 +413,7 @@ private:
 		        {
 		            RCLCPP_ERROR(this->get_logger(),
 		                "Lost communication with servo %d: %s",
-		                servo_ids_[i],
-		                packet_handler_->getTxRxResult(result));
+		                servo_ids_[i], packet_handler_->getTxRxResult(result));
 		            motors_available_ = false;
 		        }
 		        return false;
