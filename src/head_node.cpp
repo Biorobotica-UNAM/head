@@ -362,7 +362,6 @@ private:
 		{
 		    int result;
 
-		    // Pequeño delay entre servos para no saturar el bus
 		    std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
 		    packet_handler_->write2ByteTxOnly(
