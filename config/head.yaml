@@ -1,9 +1,9 @@
 /**:
   ros__parameters:
-    simulation: true
+    simulation: false
     port: "/dev/head"
     baudrate: 1000000
-    torque_enable: false
+    torque_enable: true
     max_speed: 20
 
     joint_states_topic: "joint_states"
