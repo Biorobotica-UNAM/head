@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    simulation: false
+    simulation: true
     port: "/dev/head"
     baudrate: 1000000
     torque_enable: true
