@@ -235,6 +235,20 @@ private:
 		    return false;
 		}
 
+		if (simulation_)
+		{
+		    for (size_t i = 0; i < num_servos_; i++)
+		    {
+		        goal_pose_bits_[i] = static_cast<int>(
+		            servo_directions_[i] * positions[i] * servo_bits_per_radian_[i] + servo_zeros_[i]
+		        );
+		        current_position_bits_[i] = goal_pose_bits_[i];
+		    }
+
+		    message = "Goal reached (simulation)";
+		    return true;
+		}
+
 		if (!read_current_positions())
 		{
 			message = "Cannot read servo positions. Check motor power";
