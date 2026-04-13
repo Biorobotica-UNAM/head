@@ -20,7 +20,7 @@ using namespace std::chrono_literals;
 
 #define MX_PRESENT_POSITION 36
 #define MX_GOAL_POSITION    30
-#define MX_MOVING_SPEED      32
+#define MX_MOVING_SPEED     32
 #define MX_TORQUE_ENABLE    24
 #define MX_TORQUE_LIMIT     34
 #define TORQUE_LIMIT_BITS 1000
@@ -182,7 +182,7 @@ private:
 
         if(num_servos_ == 0)
         {
-            RCLCPP_ERROR(this->get_logger(), "No servos configured for head");
+            RCLCPP_ERROR(this->get_logger(), "No servos configured");
             return false;
         }
 
@@ -202,8 +202,8 @@ private:
 	{
 		if (simulation_)
 		{
-		    RCLCPP_WARN(this->get_logger(), "Running Head in SIMULATION mode");
-		    current_position_bits_.assign(num_servos_, 2048); // assign es más limpio que resize para valores iniciales
+		    RCLCPP_WARN(this->get_logger(), "Running in SIMULATION mode");
+		    current_position_bits_.assign(num_servos_, 2048);
 		    goal_pose_bits_.assign(num_servos_, 2048);
 		    motors_available_.store(true);
 		    return true;
@@ -211,7 +211,7 @@ private:
 
 		if (port_name_.empty())
 		{
-		    RCLCPP_ERROR(this->get_logger(), "Port not specified for head");
+		    RCLCPP_ERROR(this->get_logger(), "Port not specified");
 		    return false;
 		}
 
@@ -249,7 +249,7 @@ private:
 		}
 		else
 		{
-		    RCLCPP_WARN(this->get_logger(), "Head motors not responding at launch. Will retry in background...");
+		    RCLCPP_WARN(this->get_logger(), "Motors not responding at launch. Will retry in background...");
 		    motors_available_.store(false);
 		}
 
@@ -456,7 +456,8 @@ private:
     // ======================================================
     // TIMER
     // ======================================================
-    void timer_callback() {
+    void timer_callback() 
+	{
 		std::unique_lock<std::mutex> lock(hardware_mutex_);
 		if (simulation_) { publish(); return; }
 
@@ -477,7 +478,7 @@ private:
 		        
 		        if (read_current_positions()) { 
 		            if (configure_servos()) {   
-		                RCLCPP_INFO(this->get_logger(), "!!! HEAD ONLINE AND CONFIGURED !!!");
+		                RCLCPP_INFO(this->get_logger(), "Motors online and configured");
 		                goal_pose_bits_ = current_position_bits_;
 		                motors_available_.store(true);
 		            } else {
@@ -493,7 +494,8 @@ private:
     // ======================================================
     // HARDWARE
     // ======================================================
-    bool configure_servos() {
+    bool configure_servos() 
+	{
 		if (simulation_) return true;
 
 		for (size_t i = 0; i < num_servos_; i++) {
@@ -560,6 +562,9 @@ private:
     }
 };
 
+// ======================================================
+// MAIN
+// ======================================================
 int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
