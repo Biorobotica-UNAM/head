@@ -52,7 +52,7 @@ public:
             RCLCPP_WARN(this->get_logger(), "Failed to reach starting position: %s", msg.c_str());
 
         timer_ = this->create_wall_timer(
-            80ms, std::bind(&HeadNode::timer_callback, this));
+            100ms, std::bind(&HeadNode::timer_callback, this));
 
         RCLCPP_INFO(this->get_logger(), "Head node ready");
     }
