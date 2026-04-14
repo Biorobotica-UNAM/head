@@ -340,10 +340,13 @@ private:
 		        servo_directions_[i] * positions[i] * servo_bits_per_radian_[i] + servo_zeros_[i]);
 
 		    if (raw < servo_min_limits_[i] || raw > servo_max_limits_[i]) {
-		        message = "Joint " + joint_names_[i] + " out of range.";
-		        return false;
-		    }
-		    target_bits[i] = raw;
+				int clamped = std::clamp(raw, servo_min_limits_[i], servo_max_limits_[i]);
+				RCLCPP_WARN(this->get_logger(),
+					"Joint %s out of range (requested %d, clamped to %d)",
+					joint_names_[i].c_str(), raw, clamped);
+				raw = clamped;
+			}
+			target_bits[i] = raw;
 		}
 
 		{
