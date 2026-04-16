@@ -349,6 +349,18 @@ private:
 			target_bits[i] = raw;
 		}
 
+		const double max_speed_rad_per_sec = (2.28 * 2.0 * M_PI / 60.0) / 1.1;
+		const int tolerance_bits = 20;
+		const int polling_ms = 50;
+
+		int max_diff = 0;
+		for (size_t i = 0; i < num_servos_; i++) {
+			max_diff = std::max(max_diff, std::abs(target_bits[i] - current_position_bits_[i]));
+		}
+		
+		double max_dist_rad = static_cast<double>(max_diff) / servo_bits_per_radian_[0]; 
+		int timeout_ms = static_cast<int>((max_dist_rad / max_speed_rad_per_sec) * 1000.0) + 1000;
+
 		{
 		    std::lock_guard<std::mutex> lock(hardware_mutex_);
 		    if (!motors_available_.load()) {
@@ -359,18 +371,6 @@ private:
 		    goal_pose_bits_ = target_bits;
 		    write_goal_positions(); 
 		}
-
-		const double max_speed_rad_per_sec = (2.28 * 2.0 * M_PI / 60.0) / 1.1;
-		const int tolerance_bits = 20;
-		const int polling_ms = 50;
-
-		int max_diff = 0;
-		for (size_t i = 0; i < num_servos_; i++) {
-		    max_diff = std::max(max_diff, std::abs(goal_pose_bits_[i] - current_position_bits_[i]));
-		}
-		
-		double max_dist_rad = static_cast<double>(max_diff) / servo_bits_per_radian_[0]; 
-		int timeout_ms = static_cast<int>((max_dist_rad / max_speed_rad_per_sec) * 1000.0) + 1000;
 
 		int elapsed_ms = 0;
 		bool goal_reached = false;
@@ -389,7 +389,7 @@ private:
 
 		    goal_reached = true;
 		    for (size_t i = 0; i < num_servos_; i++) {
-		        if (std::abs(current_position_bits_[i] - goal_pose_bits_[i]) > tolerance_bits) {
+    			if (std::abs(current_position_bits_[i] - target_bits[i]) > tolerance_bits) {
 		            goal_reached = false;
 		            break;
 		        }
