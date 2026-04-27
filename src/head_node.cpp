@@ -350,7 +350,7 @@ private:
 		}
 
 		const double max_speed_rad_per_sec = (2.28 * 2.0 * M_PI / 60.0) / 1.1;
-		const int tolerance_bits = 20;
+		const int tolerance_bits = 50;
 		const int polling_ms = 50;
 
 		int max_diff = 0;
