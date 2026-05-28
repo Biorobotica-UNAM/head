@@ -4,7 +4,7 @@
     port: "/dev/head"
     baudrate: 1000000
     torque_enable: true
-    max_speed: 20
+    max_speed: 100
 
     joint_states_topic: "joint_states"
     current_pose_topic: "current_pose"
