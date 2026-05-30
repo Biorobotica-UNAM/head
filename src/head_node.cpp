@@ -141,7 +141,7 @@ private:
         this->declare_parameter<std::string>("port", "");
         this->declare_parameter<int>("baudrate", 1000000);
         this->declare_parameter<bool>("torque_enable", true);
-        this->declare_parameter<int>("max_speed", 100);
+        this->declare_parameter<int>("max_speed", 50);
 
         this->declare_parameter<std::string>("joint_states_topic", "joint_states");
         this->declare_parameter<std::string>("current_pose_topic", "current_pose");
