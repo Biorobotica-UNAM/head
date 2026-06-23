@@ -15,7 +15,7 @@
     servo_zeros: [1940, 2670]
 
     servo_min_limits: [1440, 2380] 
-    servo_max_limits: [2440, 3200]
+    servo_max_limits: [2440, 3150]
     servo_directions: [1, -1]
 
     joint_names:
