@@ -77,7 +77,9 @@ private:
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_goal_reached_;
     rclcpp::Service<head_interfaces::srv::MoveHead>::SharedPtr srv_move_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr sub_goal_pose_;
+	rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_stop_;
     rclcpp::CallbackGroup::SharedPtr service_cb_group_;
+	rclcpp::CallbackGroup::SharedPtr stop_cb_group_;
 
     // =========================
     // DYNAMIXEL
@@ -124,6 +126,7 @@ private:
     std::atomic<bool> motion_in_progress_{false};
     std::atomic<bool> motion_active_{false};
     std::atomic<bool> motion_cancelled_{false};
+	std::atomic<bool> stopped_{false};
     std::future<void> motion_future_;
 
     // =========================
@@ -263,6 +266,8 @@ private:
 	{
 		service_cb_group_ = this->create_callback_group(
 		    rclcpp::CallbackGroupType::MutuallyExclusive);
+		stop_cb_group_ = this->create_callback_group(
+        rclcpp::CallbackGroupType::MutuallyExclusive);
 
 		pub_joint_state_  = this->create_publisher<sensor_msgs::msg::JointState>(joint_states_topic_, 10);
 		pub_current_pose_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(current_pose_topic_, 10);
@@ -277,10 +282,19 @@ private:
 		rclcpp::SubscriptionOptions sub_options;
 		sub_options.callback_group = service_cb_group_;
 
+		rclcpp::SubscriptionOptions stop_options;
+    	stop_options.callback_group = stop_cb_group_;
+
 		sub_goal_pose_ = this->create_subscription<std_msgs::msg::Float64MultiArray>(
 		    goal_pose_topic_, 10,
 		    std::bind(&HeadNode::goal_pose_callback, this, _1),
 		    sub_options);
+
+		sub_stop_ = this->create_subscription<std_msgs::msg::Bool>(
+		    "/navigation/navigation_ctrl/stop",
+		    rclcpp::QoS(1).reliable(),
+		    std::bind(&HeadNode::stop_callback, this, _1),
+		    stop_options);
 	}
 
     void initialize_messages()
@@ -313,6 +327,11 @@ private:
     // ======================================================
     bool move_to_position(const std::vector<double>& positions, std::string& message)
 	{
+		if (stopped_.load()) {
+		    message = "Cabeza detenida por señal de paro";
+		    return false;
+		}
+
 		if (positions.size() != num_servos_) {
 		    message = "Invalid joint size";
 		    return false;
@@ -402,11 +421,37 @@ private:
 		}
 
 		if (motion_cancelled_.load())
-		    message = "Motion cancelled";
+		{
+			std::lock_guard<std::mutex> lock(hardware_mutex_);
+			goal_pose_bits_ = current_position_bits_;
+			write_goal_positions();
+			message = "Motion cancelled";
+		}
 		else
-		    message = goal_reached ? "Goal reached" : "Timeout";
+			message = goal_reached ? "Goal reached" : "Timeout";
 
 		return goal_reached;
+	}
+
+    // ======================================================
+    // TOPIC CALLBACK (stop)
+    // ======================================================
+	void stop_callback(const std_msgs::msg::Bool::SharedPtr msg)
+	{
+		bool stop = msg->data;
+
+		if (stop && !stopped_.load())
+		{
+		    RCLCPP_WARN(this->get_logger(), "STOP recibido — bloqueando cabeza");
+		    motion_cancelled_.store(true);
+		    stopped_.store(true);
+		}
+		else if (!stop && stopped_.load())
+		{
+		    RCLCPP_INFO(this->get_logger(), "STOP desactivado — cabeza disponible");
+		    stopped_.store(false);
+		    motion_cancelled_.store(false);
+		}
 	}
 
     // ======================================================
@@ -415,6 +460,11 @@ private:
     void goal_pose_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
     {
         if (msg->data.empty()) return;
+
+		if (stopped_.load()) {
+		    RCLCPP_WARN(this->get_logger(), "goal_pose ignorado: cabeza en paro");
+		    return;
+		}
 
         motion_cancelled_.store(true);
         if (motion_future_.valid()) motion_future_.wait();
@@ -446,6 +496,12 @@ private:
         const std::shared_ptr<head_interfaces::srv::MoveHead::Request> request,
         std::shared_ptr<head_interfaces::srv::MoveHead::Response> response)
     {
+		if (stopped_.load()) {
+		    response->success = false;
+		    response->message = "Cabeza detenida por señal de paro";
+		    return;
+		}
+
         motion_cancelled_.store(false);
         motion_active_.store(true);
         motion_in_progress_.store(true);
