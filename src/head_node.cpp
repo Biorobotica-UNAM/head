@@ -458,36 +458,51 @@ private:
     // TOPIC CALLBACK (goal_pose)
     // ======================================================
     void goal_pose_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
-    {
-        if (msg->data.empty()) return;
+	{
+	    if (msg->data.size() != num_servos_) {
+	        RCLCPP_WARN(
+	            this->get_logger(),
+	            "goal_pose ignorado: se esperaban %zu valores y llegaron %zu",
+	            num_servos_,
+	            msg->data.size());
+	        return;
+	    }
 
-		if (stopped_.load()) {
-		    RCLCPP_WARN(this->get_logger(), "goal_pose ignorado: cabeza en paro");
-		    return;
-		}
+	    if (stopped_.load()) {
+	        RCLCPP_WARN(this->get_logger(), "goal_pose ignorado: cabeza en paro");
+	        return;
+	    }
 
-        motion_cancelled_.store(true);
-        if (motion_future_.valid()) motion_future_.wait();
-        
-        std::vector<double> positions = msg->data;
+	    if (!motors_available_.load() && !simulation_) {
+	        RCLCPP_WARN_THROTTLE(
+	            this->get_logger(),
+	            *this->get_clock(),
+	            2000,
+	            "goal_pose ignorado: hardware no disponible");
+	        return;
+	    }
 
-        motion_cancelled_.store(false);
-        motion_active_.store(true);
-        motion_in_progress_.store(true);
+	    std::vector<int> target_bits(num_servos_);
 
-        motion_future_ = std::async(std::launch::async, [this, positions]()
-        {
-            std::string result_msg;
-            bool reached = move_to_position(positions, result_msg);
-            
-            std_msgs::msg::Bool out;
-            out.data = reached;
-            pub_goal_reached_->publish(out);
+	    for (size_t i = 0; i < num_servos_; i++) {
+	        int raw = static_cast<int>(
+	            servo_directions_[i] * msg->data[i] * servo_bits_per_radian_[i] + servo_zeros_[i]);
 
-            motion_in_progress_.store(false);
-            motion_active_.store(false);
-        });
-    }
+	        target_bits[i] = std::clamp(raw, servo_min_limits_[i], servo_max_limits_[i]);
+	    }
+
+	    std::lock_guard<std::mutex> lock(hardware_mutex_);
+
+	    goal_pose_bits_ = target_bits;
+
+	    if (simulation_) {
+	        current_position_bits_ = goal_pose_bits_;
+	        publish();
+	        return;
+	    }
+
+	    write_goal_positions();
+	}
 
     // ======================================================
     // SERVICE
